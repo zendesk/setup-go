@@ -21,7 +21,6 @@ export async function run() {
     setGoToolchain();
 
     const cache = core.getBooleanInput('cache');
-    core.info(`Setup go version spec ${versionSpec}`);
 
     let arch = core.getInput('architecture') as Architecture;
 
@@ -30,41 +29,48 @@ export async function run() {
     }
 
     if (versionSpec) {
-      const token = core.getInput('token');
-      const auth = !token ? undefined : `token ${token}`;
+      core.startGroup('Installed version');
+      try {
+        core.info(`Setup go version spec ${versionSpec}`);
 
-      const checkLatest = core.getBooleanInput('check-latest');
+        const token = core.getInput('token');
+        const auth = !token ? undefined : `token ${token}`;
 
-      const goDownloadBaseUrl =
-        core.getInput('go-download-base-url') ||
-        process.env['GO_DOWNLOAD_BASE_URL'] ||
-        undefined;
+        const checkLatest = core.getBooleanInput('check-latest');
 
-      if (goDownloadBaseUrl) {
-        core.info(`Using custom Go download base URL: ${goDownloadBaseUrl}`);
+        const goDownloadBaseUrl =
+          core.getInput('go-download-base-url') ||
+          process.env['GO_DOWNLOAD_BASE_URL'] ||
+          undefined;
+
+        if (goDownloadBaseUrl) {
+          core.info(`Using custom Go download base URL: ${goDownloadBaseUrl}`);
+        }
+
+        const installDir = await installer.getGo(
+          versionSpec,
+          checkLatest,
+          auth,
+          arch,
+          goDownloadBaseUrl
+        );
+
+        const installDirVersion = path.basename(path.dirname(installDir));
+
+        core.addPath(path.join(installDir, 'bin'));
+        core.info('Added go to the path');
+
+        const version = installer.makeSemver(installDirVersion);
+        // Go versions less than 1.9 require GOROOT to be set
+        if (semver.lt(version, '1.9.0')) {
+          core.info('Setting GOROOT for Go version < 1.9');
+          core.exportVariable('GOROOT', installDir);
+        }
+
+        core.info(`Successfully set up Go version ${versionSpec}`);
+      } finally {
+        core.endGroup();
       }
-
-      const installDir = await installer.getGo(
-        versionSpec,
-        checkLatest,
-        auth,
-        arch,
-        goDownloadBaseUrl
-      );
-
-      const installDirVersion = path.basename(path.dirname(installDir));
-
-      core.addPath(path.join(installDir, 'bin'));
-      core.info('Added go to the path');
-
-      const version = installer.makeSemver(installDirVersion);
-      // Go versions less than 1.9 require GOROOT to be set
-      if (semver.lt(version, '1.9.0')) {
-        core.info('Setting GOROOT for Go version < 1.9');
-        core.exportVariable('GOROOT', installDir);
-      }
-
-      core.info(`Successfully set up Go version ${versionSpec}`);
     } else {
       core.info(
         '[warning]go-version input was not specified. The action will try to use pre-installed version.'
